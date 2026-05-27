@@ -38,7 +38,7 @@ def generate_policy_response(query):
     """
     Generates and formats the policy response for the user.
     """
-    result = policy_rag_tool(query)
+    result = policy_rag_tool.invoke({"query": query})
     if not result["success"]:
         return f"I encountered an error while searching for the policy: {result['message']}"
 
