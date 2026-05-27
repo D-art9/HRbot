@@ -4,12 +4,21 @@ import sys
 # Add the project root to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+try:
+    from langchain_core.tools import tool
+except ImportError:
+    try:
+        from langchain.tools import tool
+    except ImportError:
+        from langchain_classic.tools import tool
+
 from modules.rag_module import ask_question
 
 
-def policy_rag_tool(query):
+@tool
+def policy_rag_tool(query: str) -> str:
     """
-    Connects to the existing RAG system to answer policy questions.
+    Connects to the company policy RAG database to answer specific employee policy questions (e.g. leaves, code of conduct, payroll policies).
     """
     try:
         answer, sources = ask_question(query)

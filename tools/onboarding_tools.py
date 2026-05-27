@@ -6,6 +6,13 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from core.llm_provider import llm
+try:
+    from langchain_core.tools import tool
+except ImportError:
+    try:
+        from langchain.tools import tool
+    except ImportError:
+        from langchain_classic.tools import tool
 
 ONBOARDING_FILE = "data/mock_data/onboarding.json"
 
@@ -69,6 +76,30 @@ def get_pending_documents_tool(employee_id):
         return {"success": False, "message": "Onboarding record not found."}
     except Exception as e:
         return {"success": False, "message": str(e)}
+
+
+@tool
+def get_onboarding_status(employee_id: str) -> str:
+    """
+    Retrieves the onboarding progress, background verification status, 
+    joining date, laptop allocation status, and payroll status for a new joiner using their Employee ID (e.g., 'ONB-201').
+    """
+    data = get_onboarding_status_tool(employee_id)
+    if not data["success"]:
+        return f"Error fetching onboarding status: {data['message']}"
+    return json.dumps(data)
+
+
+@tool
+def get_pending_documents(employee_id: str) -> str:
+    """
+    Retrieves the list of outstanding identity, educational, or corporate 
+    documents/tasks a new employee needs to submit using their Employee ID (e.g., 'ONB-201').
+    """
+    data = get_pending_documents_tool(employee_id)
+    if not data["success"]:
+        return f"Error fetching pending list: {data['message']}"
+    return json.dumps(data)
 
 
 def generate_onboarding_status_response(employee_id):

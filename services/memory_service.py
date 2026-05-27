@@ -26,7 +26,9 @@ class MemoryService:
         if session_id not in self._memories:
             self._memories[session_id] = ConversationBufferMemory(
                 memory_key="history",
-                return_messages=True
+                return_messages=True,
+                input_key="input",
+                output_key="output"
             )
         return self._memories[session_id]
 

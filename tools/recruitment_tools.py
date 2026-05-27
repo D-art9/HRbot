@@ -6,6 +6,13 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from core.llm_provider import llm
+try:
+    from langchain_core.tools import tool
+except ImportError:
+    try:
+        from langchain.tools import tool
+    except ImportError:
+        from langchain_classic.tools import tool
 
 CANDIDATES_FILE = "data/mock_data/candidates.json"
 EMPLOYEES_FILE = "data/mock_data/employees.json"
@@ -119,6 +126,54 @@ def get_recruiter_contact_tool(candidate_id):
         }
     except Exception as e:
         return {"success": False, "message": str(e)}
+
+
+@tool
+def get_candidate_status(candidate_id: str) -> str:
+    """
+    Retrieves the recruitment status (e.g. Applied, Interviewing, Offer Sent, Rejected) 
+    and recruiter info for a candidate using their Candidate ID (e.g., 'CAND-101').
+    """
+    data = get_candidate_status_tool(candidate_id)
+    if not data["success"]:
+        return f"Error fetching status: {data['message']}"
+    return json.dumps(data["candidate"])
+
+
+@tool
+def get_interview_schedule(candidate_id: str) -> str:
+    """
+    Retrieves the interview date, time, mode (Online/Offline), and panelist 
+    for a candidate using their Candidate ID (e.g., 'CAND-101').
+    """
+    data = get_interview_schedule_tool(candidate_id)
+    if not data["success"]:
+        return f"Error fetching schedule: {data['message']}"
+    return json.dumps(data)
+
+
+@tool
+def get_offer_status(candidate_id: str) -> str:
+    """
+    Retrieves the final offer status (e.g., Sent, Accepted, Declined) 
+    and onboarding start details for a candidate using their Candidate ID (e.g., 'CAND-101').
+    """
+    data = get_offer_status_tool(candidate_id)
+    if not data["success"]:
+        return f"Error fetching offer details: {data['message']}"
+    return json.dumps(data)
+
+
+@tool
+def get_recruiter_contact(candidate_id: str) -> str:
+    """
+    Retrieves contact details (Name, Email, Phone) of the assigned HR recruiter 
+    responsible for a candidate's application, using the Candidate ID (e.g., 'CAND-101').
+    """
+    data = get_recruiter_contact_tool(candidate_id)
+    if not data["success"]:
+        return f"Error fetching recruiter contact: {data['message']}"
+    return json.dumps(data)
 
 
 def generate_candidate_status_response(candidate_id):

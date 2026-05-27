@@ -10,30 +10,43 @@ def test_health():
     print(response.json())
 
 def test_chat_flow():
-    print("\n--- Testing Multi-Turn Chat Flow ---")
-    
-    # Turn 1
+    print("\n--- Testing SSE Chat Flow ---")
     payload1 = {
         "query": "I still haven't received my offer letter yet",
         "user_id": "CAND-103",
-        "session_id": "session123"
+        "session_id": "session123",
+        "stream": True,
     }
     print("Turn 1 Query:", payload1["query"])
-    response1 = requests.post(f"{base_url}/api/chat", json=payload1)
+    response1 = requests.post(f"{base_url}/api/chat", json=payload1, stream=True, timeout=120)
     print(f"Status Code: {response1.status_code}")
-    res_json1 = response1.json()
-    print("AI Response:", res_json1.get("response")[:200] + "...")
-    
-    # Turn 2 - Context aware follow-up
+    text1 = _read_sse_response(response1)
+    print("AI Response:", text1[:200] + "...")
+
+    print("\n--- Testing JSON Chat Flow (frontend-style messages) ---")
     payload2 = {
-        "query": "Who is my recruiter?",
-        "session_id": "session123"
+        "messages": [
+            {"role": "user", "content": "Who is my recruiter?"},
+        ],
+        "session_id": "session123",
+        "user_id": "CAND-103",
     }
-    print("\nTurn 2 Query (Context-aware):", payload2["query"])
-    response2 = requests.post(f"{base_url}/api/chat", json=payload2)
+    response2 = requests.post(f"{base_url}/chat", json=payload2, timeout=120)
     print(f"Status Code: {response2.status_code}")
     res_json2 = response2.json()
-    print("AI Response:", res_json2.get("response")[:300] + "...")
+    reply = res_json2.get("data") or res_json2.get("response", "")
+    print("AI Response:", str(reply)[:300] + "...")
+
+
+def _read_sse_response(response):
+    import json
+    tokens = []
+    for line in response.iter_lines(decode_unicode=True):
+        if line and line.startswith("data: "):
+            payload = json.loads(line[6:])
+            if payload.get("type") == "token":
+                tokens.append(payload.get("content", ""))
+    return "".join(tokens)
 
 def test_routes():
     print("\n--- Testing Recruitment Endpoint ---")

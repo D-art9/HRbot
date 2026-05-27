@@ -1,46 +1,171 @@
+import json
 import os
 import sys
-from typing import Optional
-from fastapi import APIRouter, HTTPException, Depends
-from fastapi.responses import StreamingResponse
+from typing import Any, Dict, List, Optional, Tuple
+
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 # Add project root to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from agents.hr_agent import stream_hr_query
-from services.session_service import session_service
 from services.memory_service import memory_service
+from services.session_service import session_service
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
+SSE_HEADERS = {
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+}
+
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
 class ChatRequest(BaseModel):
-    query: str
+    """Supports HRbot SSE clients and JSON clients (e.g. axios with messages array)."""
+
+    query: Optional[str] = None
+    message: Optional[str] = None
+    messages: Optional[List[ChatMessage]] = None
     user_id: Optional[str] = None
     session_id: Optional[str] = None
+    stream: Optional[bool] = None
+
+    def resolved_query(self) -> str:
+        if self.query and self.query.strip():
+            return self.query.strip()
+        if self.message and self.message.strip():
+            return self.message.strip()
+        if self.messages:
+            for item in reversed(self.messages):
+                if item.role == "user" and item.content.strip():
+                    return item.content.strip()
+        return ""
+
+    def should_stream(self) -> bool:
+        if self.stream is not None:
+            return self.stream
+        # Clients sending OpenAI-style message arrays typically expect JSON, not SSE.
+        if self.messages:
+            return False
+        return True
+
+
+def _resolve_session(session_id: Optional[str], user_id: Optional[str]) -> Tuple[str, Optional[str]]:
+    session_id = session_id or "default_session"
+
+    if session_service.session_exists(session_id):
+        if not user_id:
+            user_id = session_service.get_user_id(session_id)
+    elif user_id:
+        session_service.create_session(session_id, user_id)
+
+    return session_id, user_id
+
+
+async def _collect_stream_response(
+    query: str, user_id: Optional[str], session_id: str
+) -> Dict[str, Any]:
+    tokens: List[str] = []
+    intent: Optional[str] = None
+    error: Optional[str] = None
+
+    async for chunk in stream_hr_query(query, user_id, session_id):
+        if not chunk.startswith("data: "):
+            continue
+        try:
+            payload = json.loads(chunk[6:].strip())
+        except json.JSONDecodeError:
+            continue
+
+        event_type = payload.get("type")
+        if event_type == "token":
+            tokens.append(payload.get("content", ""))
+        elif event_type == "metadata" and payload.get("intent"):
+            intent = payload["intent"]
+        elif event_type == "error":
+            error = payload.get("message", "Unknown error")
+        elif event_type == "done":
+            break
+
+    response_text = "".join(tokens)
+    if error:
+        return {
+            "success": False,
+            "response": response_text,
+            "intent": intent,
+            "session_id": session_id,
+            "error": error,
+        }
+
+    return {
+        "success": True,
+        "response": response_text,
+        "intent": intent,
+        "session_id": session_id,
+    }
 
 
 @router.post("")
 async def chat(request: ChatRequest):
-    if not request.query:
-        raise HTTPException(status_code=400, detail="Query cannot be empty")
+    query = request.resolved_query()
+    if not query:
+        raise HTTPException(
+            status_code=400,
+            detail="Query cannot be empty. Send 'query', 'message', or a user entry in 'messages'.",
+        )
 
-    session_id = request.session_id or "default_session"
-    user_id = request.user_id
+    session_id, user_id = _resolve_session(request.session_id, request.user_id)
 
-    # Session mapping logic
-    if session_id:
-        if session_service.session_exists(session_id):
-            if not user_id:
-                user_id = session_service.get_user_id(session_id)
-        else:
-            if user_id:
-                session_service.create_session(session_id, user_id)
+    if not request.should_stream():
+        result = await _collect_stream_response(query, user_id, session_id)
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error", "Chat failed"))
+        return JSONResponse(
+            {
+                "success": True,
+                "data": result["response"],
+                "response": result["response"],
+                "intent": result.get("intent"),
+                "session_id": session_id,
+            }
+        )
 
     return StreamingResponse(
-        stream_hr_query(request.query, user_id, session_id),
-        media_type="text/event-stream"
+        stream_hr_query(query, user_id, session_id),
+        media_type="text/event-stream",
+        headers=SSE_HEADERS,
     )
+
+
+@router.post("/json")
+async def chat_json(request: ChatRequest):
+    """Non-streaming JSON endpoint for clients that call response.json()."""
+    json_request = request.model_copy(update={"stream": False})
+    return await chat(json_request)
+
+
+@router.get("/stream")
+async def chat_stream_get(
+    query: str = Query(..., min_length=1),
+    user_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+):
+    """GET + SSE for browsers using EventSource (POST + fetch also supported)."""
+    session_id, user_id = _resolve_session(session_id, user_id)
+    return StreamingResponse(
+        stream_hr_query(query, user_id, session_id),
+        media_type="text/event-stream",
+        headers=SSE_HEADERS,
+    )
+
 
 @router.post("/session/clear")
 async def clear_session(session_id: str):
