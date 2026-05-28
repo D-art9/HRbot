@@ -12,7 +12,7 @@ class RAGService:
         """
         Executes the policy query against the RAG vector store and returns raw dictionary results.
         """
-        return policy_rag_tool(query)
+        return policy_rag_tool.invoke({"query": query})
 
     def query_policy_formatted(self, query: str) -> str:
         """
