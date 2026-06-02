@@ -1,3 +1,6 @@
+import uuid_utils
+import uuid
+uuid.uuid7 = uuid_utils.uuid7
 import os
 import sys
 from contextlib import asynccontextmanager

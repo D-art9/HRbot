@@ -22,6 +22,7 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.checkpoint.memory import MemorySaver
 
+from core.cyvia_tracing import build_langgraph_config
 from core.llm_provider import llm
 from core.logger import logger
 
@@ -78,11 +79,11 @@ memory_saver = MemorySaver()
 app_graph = workflow.compile(checkpointer=memory_saver)
 
 
-def route_hr_query(query, user_id=None, session_id=None):
+def route_hr_query(query, user_id=None, session_id=None, cyvia_handler=None):
     """
     Routes HR queries to appropriate workflow tools using LangGraph Tool-calling Agent.
     """
-    config = {"configurable": {"thread_id": session_id or "default_session"}}
+    config = build_langgraph_config(session_id, cyvia_handler)
     state_input = {
         "messages": [HumanMessage(content=query)],
         "user_id": user_id or "Not Provided"
@@ -91,7 +92,7 @@ def route_hr_query(query, user_id=None, session_id=None):
     return res["messages"][-1].content
 
 
-async def stream_hr_query(query, user_id=None, session_id=None):
+async def stream_hr_query(query, user_id=None, session_id=None, cyvia_handler=None):
     """
     Async generator that yields SSE structured payloads for the React frontend.
     """
@@ -105,7 +106,7 @@ async def stream_hr_query(query, user_id=None, session_id=None):
         yield f"data: {json.dumps({'type': 'metadata', 'workflow_stage': 'routing'})}\n\n"
         await asyncio.sleep(0.01)
         
-        config = {"configurable": {"thread_id": session_id or "default_session"}}
+        config = build_langgraph_config(session_id, cyvia_handler)
         state_input = {
             "messages": [HumanMessage(content=query)],
             "user_id": user_id or "Not Provided"
@@ -119,7 +120,7 @@ async def stream_hr_query(query, user_id=None, session_id=None):
         async for chunk in app_graph.astream(
             state_input,
             config=config,
-            stream_mode="updates"
+            stream_mode="updates",
         ):
             if "tools" in chunk:
                 tool_messages = chunk["tools"]["messages"]
@@ -131,13 +132,14 @@ async def stream_hr_query(query, user_id=None, session_id=None):
                 agent_message = chunk["agent"]["messages"][-1]
                 response_content = agent_message.content
 
-        yield f"data: {json.dumps({
+        metadata_payload = {
             'type': 'metadata',
             'active_tool': active_tool,
             'rag_state': rag_retrieval_state,
             'confidence': 0.95,
             'workflow_stage': 'generation'
-        })}\n\n"
+        }
+        yield f"data: {json.dumps(metadata_payload)}\n\n"
         await asyncio.sleep(0.01)
         
         words = response_content.split(" ")
@@ -151,6 +153,7 @@ async def stream_hr_query(query, user_id=None, session_id=None):
     except Exception as e:
         logger.error(f"STREAM Error: {e}")
         yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        raise
 
 
 

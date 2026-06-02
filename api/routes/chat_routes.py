@@ -11,6 +11,11 @@ from pydantic import BaseModel
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from agents.hr_agent import stream_hr_query
+from core.cyvia_tracing import (
+    aclose_trace,
+    create_chat_trace,
+    wrap_sse_stream,
+)
 from services.memory_service import memory_service
 from services.session_service import session_service
 
@@ -71,13 +76,18 @@ def _resolve_session(session_id: Optional[str], user_id: Optional[str]) -> Tuple
 
 
 async def _collect_stream_response(
-    query: str, user_id: Optional[str], session_id: str
+    query: str,
+    user_id: Optional[str],
+    session_id: str,
+    cyvia_handler=None,
 ) -> Dict[str, Any]:
     tokens: List[str] = []
     intent: Optional[str] = None
     error: Optional[str] = None
 
-    async for chunk in stream_hr_query(query, user_id, session_id):
+    async for chunk in stream_hr_query(
+        query, user_id, session_id, cyvia_handler=cyvia_handler
+    ):
         if not chunk.startswith("data: "):
             continue
         try:
@@ -124,22 +134,50 @@ async def chat(request: ChatRequest):
 
     session_id, user_id = _resolve_session(request.session_id, request.user_id)
 
+    # --- Cyvia root trace (one per HTTP chat request) ---
+    cyvia_ctx = create_chat_trace(
+        session_id=session_id,
+        user_id=user_id,
+        query_preview=query,
+    )
+    cyvia_handler = cyvia_ctx.handler if cyvia_ctx else None
+    cyvia_trace = cyvia_ctx.trace if cyvia_ctx else None
+
     if not request.should_stream():
-        result = await _collect_stream_response(query, user_id, session_id)
-        if not result.get("success"):
-            raise HTTPException(status_code=500, detail=result.get("error", "Chat failed"))
-        return JSONResponse(
-            {
-                "success": True,
-                "data": result["response"],
-                "response": result["response"],
-                "intent": result.get("intent"),
-                "session_id": session_id,
-            }
-        )
+        try:
+            result = await _collect_stream_response(
+                query, user_id, session_id, cyvia_handler=cyvia_handler
+            )
+            if not result.get("success"):
+                raise HTTPException(
+                    status_code=500, detail=result.get("error", "Chat failed")
+                )
+            return JSONResponse(
+                {
+                    "success": True,
+                    "data": result["response"],
+                    "response": result["response"],
+                    "intent": result.get("intent"),
+                    "session_id": session_id,
+                }
+            )
+        finally:
+            await aclose_trace(cyvia_trace)
+
+    async def event_stream():
+        async for chunk in wrap_sse_stream(
+            stream_hr_query(
+                query,
+                user_id,
+                session_id,
+                cyvia_handler=cyvia_handler,
+            ),
+            cyvia_trace,
+        ):
+            yield chunk
 
     return StreamingResponse(
-        stream_hr_query(query, user_id, session_id),
+        event_stream(),
         media_type="text/event-stream",
         headers=SSE_HEADERS,
     )
@@ -160,8 +198,29 @@ async def chat_stream_get(
 ):
     """GET + SSE for browsers using EventSource (POST + fetch also supported)."""
     session_id, user_id = _resolve_session(session_id, user_id)
+
+    cyvia_ctx = create_chat_trace(
+        session_id=session_id,
+        user_id=user_id,
+        query_preview=query,
+    )
+    cyvia_handler = cyvia_ctx.handler if cyvia_ctx else None
+    cyvia_trace = cyvia_ctx.trace if cyvia_ctx else None
+
+    async def event_stream():
+        async for chunk in wrap_sse_stream(
+            stream_hr_query(
+                query,
+                user_id,
+                session_id,
+                cyvia_handler=cyvia_handler,
+            ),
+            cyvia_trace,
+        ):
+            yield chunk
+
     return StreamingResponse(
-        stream_hr_query(query, user_id, session_id),
+        event_stream(),
         media_type="text/event-stream",
         headers=SSE_HEADERS,
     )

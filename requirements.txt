@@ -15,3 +15,5 @@ tiktoken
 flashrank
 fastapi
 uvicorn
+langgraph
+mcp

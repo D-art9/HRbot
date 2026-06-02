@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SVYIA HR AI Chat</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #0f172a; background: #f8fafc; }
+    body { max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.25rem; margin-bottom: 0.25rem; }
+    p.sub { color: #64748b; font-size: 0.9rem; margin-top: 0; }
+    #log { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; min-height: 280px; padding: 1rem; overflow-y: auto; white-space: pre-wrap; }
+    form { display: flex; gap: 0.5rem; margin-top: 1rem; }
+    input { flex: 1; padding: 0.75rem 1rem; border-radius: 10px; border: 1px solid #cbd5e1; }
+    button { padding: 0.75rem 1rem; border: none; border-radius: 10px; background: #2563eb; color: #fff; cursor: pointer; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .meta { color: #64748b; font-size: 0.85rem; margin: 0.5rem 0; }
+    .error { color: #b91c1c; }
+  </style>
+</head>
+<body>
+  <h1>SVYIA HR AI Assistant</h1>
+  <p class="sub">Connected to this backend via streaming SSE.</p>
+  <div id="log"></div>
+  <form id="chat-form">
+    <input id="query" type="text" placeholder="Ask about leave policy, onboarding, recruitment..." required />
+    <button type="submit" id="send-btn">Send</button>
+  </form>
+
+  <script>
+    const logEl = document.getElementById('log');
+    const form = document.getElementById('chat-form');
+    const queryInput = document.getElementById('query');
+    const sendBtn = document.getElementById('send-btn');
+    const apiBase = window.location.origin;
+
+    function append(text, className = '') {
+      const div = document.createElement('div');
+      if (className) div.className = className;
+      div.textContent = text;
+      logEl.appendChild(div);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const query = queryInput.value.trim();
+      if (!query) return;
+
+      sendBtn.disabled = true;
+      append(`You: ${query}`);
+      queryInput.value = '';
+
+      let assistantEl = document.createElement('div');
+      assistantEl.textContent = 'AI: ';
+      logEl.appendChild(assistantEl);
+
+      try {
+        const response = await fetch(`${apiBase}/api/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query,
+            user_id: 'CAND-103',
+            session_id: 'web-demo',
+            stream: true,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() || '';
+
+          for (const part of parts) {
+            const line = part.trim();
+            if (!line.startsWith('data:')) continue;
+            const payload = JSON.parse(line.slice(5).trim());
+
+            if (payload.type === 'metadata' && payload.intent) {
+              append(`Intent: ${payload.intent} | stage: ${payload.workflow_stage || 'n/a'}`, 'meta');
+            } else if (payload.type === 'token') {
+              assistantEl.textContent += payload.content || '';
+            } else if (payload.type === 'error') {
+              append(`Error: ${payload.message}`, 'error');
+            } else if (payload.type === 'done') {
+              append('— stream complete —', 'meta');
+            }
+          }
+          logEl.scrollTop = logEl.scrollHeight;
+        }
+      } catch (err) {
+        append(`Request failed: ${err.message}`, 'error');
+      } finally {
+        sendBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

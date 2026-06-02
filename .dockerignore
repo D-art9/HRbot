@@ -1,0 +1,20 @@
+# Ignore local environments and run caches
+env/
+!env/Lib/site-packages/cyvia/
+!env/Lib/site-packages/claude_agent_sdk/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore local config files and logs
+.env
+data/logs/
+output.log
+
+# Ignore IDE settings
+.git
+.gitignore
+.cursor/
+.vscode/
