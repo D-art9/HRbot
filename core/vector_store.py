@@ -7,7 +7,8 @@ from core.embedding_provider import get_embedding_function
 
 load_dotenv()
 
-CHROMA_PATH = os.getenv("CHROMA_PATH", "data/chroma_db")
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+CHROMA_PATH = os.getenv("CHROMA_PATH", os.path.join(PROJECT_ROOT, "data", "chroma_db"))
 
 _vector_store = None
 

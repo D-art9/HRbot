@@ -2,9 +2,11 @@
 import logging
 import os
 
-LOG_PATH = "data/logs/agent.log"
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+LOG_DIR = os.path.join(project_root, "data", "logs")
+LOG_PATH = os.path.join(LOG_DIR, "agent.log")
 
-os.makedirs("data/logs", exist_ok=True)
+os.makedirs(LOG_DIR, exist_ok=True)
 
 logging.basicConfig(
     filename=LOG_PATH,

@@ -14,8 +14,9 @@ except ImportError:
     except ImportError:
         from langchain_classic.tools import tool
 
-CANDIDATES_FILE = "data/mock_data/candidates.json"
-EMPLOYEES_FILE = "data/mock_data/employees.json"
+_project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+CANDIDATES_FILE = os.path.join(_project_root, "data", "mock_data", "candidates.json")
+EMPLOYEES_FILE = os.path.join(_project_root, "data", "mock_data", "employees.json")
 
 
 def get_candidate_status_tool(candidate_id):

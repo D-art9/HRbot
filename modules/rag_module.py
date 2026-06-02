@@ -16,7 +16,8 @@ from core.llm_provider import llm
 from core.vector_store import get_vector_store, clear_vector_store_cache
 from core.logger import logger
 
-DOCUMENT_PATH = "data/documents"
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+DOCUMENT_PATH = os.path.join(PROJECT_ROOT, "data", "documents")
 
 # Lazy-loaded ranker (initialized on first use, not at import time)
 _ranker = None
@@ -27,7 +28,8 @@ def get_ranker():
     if _ranker is None:
         logger.info("RANKER: Initializing ranker model (first use)")
         print("[RANKER] Initializing ms-marco-MiniLM-L-12-v2 model...")
-        _ranker = Ranker(model_name="ms-marco-MiniLM-L-12-v2", cache_dir="data/models")
+        cache_dir = os.path.join(PROJECT_ROOT, "data", "models")
+        _ranker = Ranker(model_name="ms-marco-MiniLM-L-12-v2", cache_dir=cache_dir)
         logger.info("RANKER: Model initialization complete")
         print("[RANKER] Model ready")
     return _ranker

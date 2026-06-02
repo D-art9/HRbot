@@ -14,7 +14,8 @@ except ImportError:
     except ImportError:
         from langchain_classic.tools import tool
 
-ONBOARDING_FILE = "data/mock_data/onboarding.json"
+_project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+ONBOARDING_FILE = os.path.join(_project_root, "data", "mock_data", "onboarding.json")
 
 
 def get_onboarding_status_tool(employee_id):
