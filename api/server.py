@@ -21,6 +21,25 @@ from api.routes.policy_routes import router as policy_router
 from core.logger import logger
 
 
+async def keep_alive_ping():
+    """Keep-alive task to prevent Render free-tier from spinning down."""
+    import httpx
+    import asyncio
+    url = os.getenv("RENDER_EXTERNAL_URL")
+    if not url:
+        logger.warning("RENDER Keep-alive: RENDER_EXTERNAL_URL is not set.")
+        return
+    logger.info(f"RENDER Keep-alive: Starting ping loop for {url}")
+    async with httpx.AsyncClient() as client:
+        while True:
+            try:
+                await asyncio.sleep(600)  # Sleep 10 minutes
+                response = await client.get(f"{url}/ping")
+                logger.info(f"RENDER Keep-alive: Ping status: {response.status_code}")
+            except Exception as e:
+                logger.warning(f"RENDER Keep-alive: Ping failed: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -68,6 +87,11 @@ async def lifespan(app: FastAPI):
         get_ranker()
         print("[INIT] ✓ Ranker ready")
         
+        # Start the Render keep-alive task if running on Render free tier
+        if os.getenv("RENDER"):
+            import asyncio
+            asyncio.create_task(keep_alive_ping())
+            
         print("\n" + "="*70)
         print("✅ HRBOT BACKEND INITIALIZED SUCCESSFULLY".center(70))
         print("="*70 + "\n")
@@ -128,6 +152,14 @@ async def health_check():
     Simple health check route.
     """
     return {"status": "healthy", "service": "SVYIA HR AI Backend"}
+
+
+@app.get("/ping")
+async def ping_route():
+    """
+    Simple ping route for keep-alive and uptime checking.
+    """
+    return "pong"
 
 
 @app.get("/")
