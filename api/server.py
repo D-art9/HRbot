@@ -1,8 +1,15 @@
-import uuid_utils
-import uuid
-uuid.uuid7 = uuid_utils.uuid7
 import os
 import sys
+
+# Limit threads to prevent MKL/ONNX memory bloat in memory-constrained environments (like Render free tier)
+if os.getenv("RENDER") or os.getenv("LOW_MEMORY"):
+    os.environ["OMP_NUM_THREADS"] = "1"
+    os.environ["MKL_NUM_THREADS"] = "1"
+    os.environ["OPENBLAS_NUM_THREADS"] = "1"
+    os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+    os.environ["NUMEXPR_NUM_THREADS"] = "1"
+    os.environ["ONNXRUNTIME_ENABLE_TELEMETRY"] = "0"
+
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -13,6 +20,10 @@ from fastapi.staticfiles import StaticFiles
 
 # Add the project root to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+import uuid_utils
+import uuid
+uuid.uuid7 = uuid_utils.uuid7
 
 from api.routes.chat_routes import ChatRequest, chat as chat_handler, router as chat_router
 from api.routes.recruitment_routes import router as recruitment_router
@@ -82,6 +93,9 @@ async def lifespan(app: FastAPI):
                 initialize_rag()
                 print("[INIT] ✓ Auto-indexing complete")
                 logger.info("SERVER: Auto-indexing complete")
+                # Force garbage collection to release memory from PDF/DOCX loaders and text processing
+                import gc
+                gc.collect()
         except Exception as ex:
             logger.warning(f"SERVER: Auto-indexing check failed: {ex}")
             print(f"[INIT] ⚠ Auto-indexing check failed: {ex}")
@@ -95,11 +109,16 @@ async def lifespan(app: FastAPI):
         else:
             print("[INIT] ✓ LLM provider ready")
         
-        logger.info("SERVER: Pre-warming ranker model...")
-        print("[INIT] 4/4 Pre-warming ranker model...")
-        from modules.rag_module import get_ranker
-        get_ranker()
-        print("[INIT] ✓ Ranker ready")
+        # Skip ranker pre-warming on Render to conserve RAM (it will load lazily when queried)
+        if os.getenv("RENDER") or os.getenv("LOW_MEMORY"):
+            print("[INIT] 4/4 Skipping ranker pre-warming to conserve memory on Render free-tier")
+            logger.info("SERVER: Skipping ranker pre-warming on Render")
+        else:
+            logger.info("SERVER: Pre-warming ranker model...")
+            print("[INIT] 4/4 Pre-warming ranker model...")
+            from modules.rag_module import get_ranker
+            get_ranker()
+            print("[INIT] ✓ Ranker ready")
         
         # Start the Render keep-alive task if running on Render free tier
         if os.getenv("RENDER"):
