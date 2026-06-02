@@ -69,8 +69,22 @@ async def lifespan(app: FastAPI):
         logger.info("SERVER: Initializing vector store...")
         print("[INIT] 2/4 Loading vector store...")
         from core.vector_store import get_vector_store
-        get_vector_store(collection_name="hr_knowledge_base")
+        vectordb = get_vector_store(collection_name="hr_knowledge_base")
         print("[INIT] ✓ Vector store ready")
+        
+        # Auto-index documents if vector store is empty (e.g., first run in a new deployment/Docker container)
+        try:
+            db_count = vectordb._collection.count()
+            if db_count == 0:
+                print("[INIT] ⚠ Vector store is empty. Auto-indexing documents from data/documents...")
+                logger.info("SERVER: Vector store is empty. Running auto-indexing...")
+                from modules.rag_module import initialize_rag
+                initialize_rag()
+                print("[INIT] ✓ Auto-indexing complete")
+                logger.info("SERVER: Auto-indexing complete")
+        except Exception as ex:
+            logger.warning(f"SERVER: Auto-indexing check failed: {ex}")
+            print(f"[INIT] ⚠ Auto-indexing check failed: {ex}")
         
         logger.info("SERVER: Verifying LLM provider...")
         print("[INIT] 3/4 Verifying LLM provider...")
