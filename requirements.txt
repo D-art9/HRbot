@@ -16,3 +16,4 @@ fastapi
 uvicorn
 langgraph
 mcp
+uuid_utils
