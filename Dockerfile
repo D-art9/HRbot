@@ -17,9 +17,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy only requirements first to leverage Docker layer caching
 COPY requirements.txt .
 
-# Install CPU-only PyTorch first to avoid downloading heavy CUDA/GPU packages (saves ~1.5 GB)
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
-
 # Install Python packages
 RUN pip install --no-cache-dir -r requirements.txt
 
