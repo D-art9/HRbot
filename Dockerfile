@@ -20,9 +20,9 @@ COPY requirements.txt .
 # Install Python packages
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy private packages from host's virtual environment to container site-packages
-COPY env/Lib/site-packages/cyvia/ /usr/local/lib/python3.11/site-packages/cyvia/
-COPY env/Lib/site-packages/claude_agent_sdk/ /usr/local/lib/python3.11/site-packages/claude_agent_sdk/
+# Copy private packages from libs directory to container site-packages
+COPY libs/cyvia/ /usr/local/lib/python3.11/site-packages/cyvia/
+COPY libs/claude_agent_sdk/ /usr/local/lib/python3.11/site-packages/claude_agent_sdk/
 
 # Copy application source folders
 COPY agents/ ./agents/

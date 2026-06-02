@@ -19,3 +19,8 @@ output.log
 # OS
 .DS_Store
 Thumbs.db
+
+# Database and Model Caches
+data/models/
+data/chroma_db/
+

@@ -1,7 +1,5 @@
 # Ignore local environments and run caches
 env/
-!env/Lib/site-packages/cyvia/
-!env/Lib/site-packages/claude_agent_sdk/
 venv/
 __pycache__/
 *.pyc
